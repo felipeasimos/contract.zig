@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn getFunctionSignatureString(comptime FuncType: type) []const u8 {
+fn getFunctionSignatureString(comptime FuncType: type) []const u8 {
     const func_info = @typeInfo(FuncType);
 
     if (func_info != .@"fn") {
@@ -153,4 +153,3 @@ pub fn validate(comptime Impl: type, comptime Inter: type) void {
 
     validateDeclarations(Impl, Inter);
 }
-
