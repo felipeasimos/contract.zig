@@ -71,10 +71,19 @@ fn selfChildTypeMatch(comptime ParamAType: type, comptime A: type, comptime Para
 
     const param_a_tag_name = @tagName(param_a_tag);
     const param_a_tag_data = @field(param_a_info, param_a_tag_name);
-    if (@hasField(@TypeOf(param_a_tag_data), "child")) {
-        const param_a_child = param_a_tag_data.child;
-        const param_b_child = @field(param_b_info, param_a_tag_name).child;
-        return selfChildTypeMatch(param_a_child, A, param_b_child, B);
+    if (@TypeOf(param_a_tag_data) != void) {
+        if (@hasField(@TypeOf(param_a_tag_data), "child")) {
+            const param_a_child = param_a_tag_data.child;
+            const param_b_child = @field(param_b_info, param_a_tag_name).child;
+            return selfChildTypeMatch(param_a_child, A, param_b_child, B);
+        }
+        if (@hasField(@TypeOf(param_a_tag_data), "payload")) {
+            const param_a_child = param_a_tag_data.payload;
+            const param_b_child = @field(param_b_info, param_a_tag_name).payload;
+            return selfChildTypeMatch(param_a_child, A, param_b_child, B);
+        }
+    } else {
+        return true;
     }
     return false;
 }
@@ -84,19 +93,21 @@ fn validateFunction(comptime Impl: type, comptime Inter: type, comptime fn_name:
     const impl_fn_info = @typeInfo(@TypeOf(@field(Impl, fn_name))).@"fn";
 
     if (impl_fn_info.return_type != inter_fn_info.return_type) {
-        @compileError("Return types don't match");
+        if (impl_fn_info.return_type == null or inter_fn_info.return_type == null) {
+            @compileError("Return types don't match");
+        }
+        if (!selfChildTypeMatch(impl_fn_info.return_type.?, Impl, inter_fn_info.return_type.?, Inter)) {
+            @compileError("Return types don't match");
+        }
     }
     if (impl_fn_info.is_var_args != inter_fn_info.is_var_args) {
-        @compileError("Function signature doesn't match");
-    }
-    if (impl_fn_info.is_generic != inter_fn_info.is_generic) {
         @compileError("Function signature doesn't match");
     }
 
     for (inter_fn_info.params, 0..) |param, i| {
         const impl_param = impl_fn_info.params[i];
         const type_match = impl_param.type == param.type;
-        const self_match = selfChildTypeMatch(param.type, Inter, impl_param.type, Impl);
+        const self_match = impl_param.is_generic or param.is_generic or impl_param.type == param.type or selfChildTypeMatch(impl_param.type.?, Impl, param.type.?, Inter);
         if (!type_match and !self_match) {
             @compileError("Function signature doesn't match");
         }
@@ -112,7 +123,8 @@ fn validateDeclarations(comptime Impl: type, comptime Inter: type) void {
 
     if (@hasField(@TypeOf(active_tag_data), "decls")) {
         const inter_decls = @field(inter_info, active_tag_name).decls;
-        for (inter_decls) |fn_name| {
+        for (inter_decls) |decl| {
+            const fn_name = decl.name;
             const inter_fn = @field(Inter, fn_name);
             const inter_fn_type = @TypeOf(inter_fn);
             const inter_fn_type_info = @typeInfo(inter_fn_type);
@@ -123,7 +135,7 @@ fn validateDeclarations(comptime Impl: type, comptime Inter: type) void {
                 const error_message = std.fmt.comptimePrint("Missing implementation of {s}", .{getFunctionSignatureString(inter_fn_type)});
                 @compileError(error_message);
             }
-            validateFunction(Impl, inter_fn_type_info.@"fn", fn_name);
+            validateFunction(Impl, Inter, fn_name);
         }
         return;
     }
@@ -144,11 +156,19 @@ pub fn validate(comptime Impl: type, comptime Inter: type) void {
 
     const active_tag_name = @tagName(impl_tag);
     const active_tag_data = @field(impl_info, active_tag_name);
-    if (@hasField(@TypeOf(active_tag_data), "child")) {
-        const impl_child = active_tag_data.child;
-        const inter_child = @field(inter_info, active_tag_name).child;
-        validate(impl_child, inter_child);
-        return;
+    if (@TypeOf(active_tag_data) != void) {
+        if (@hasField(@TypeOf(active_tag_data), "child")) {
+            const impl_child = active_tag_data.child;
+            const inter_child = @field(inter_info, active_tag_name).child;
+            validate(impl_child, inter_child);
+            return;
+        }
+        if (@hasField(@TypeOf(active_tag_data), "payload")) {
+            const impl_child = active_tag_data.payload;
+            const inter_child = @field(inter_info, active_tag_name).payload;
+            validate(impl_child, inter_child);
+            return;
+        }
     }
 
     validateDeclarations(Impl, Inter);

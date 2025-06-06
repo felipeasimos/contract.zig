@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    check_tests.root_module.addImport("contract", contract);
 
     const check_step = b.step("check", "Check for compile errors");
     check_step.dependOn(&check_tests.step);
