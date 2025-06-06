@@ -11,7 +11,7 @@ fn getFunctionSignatureString(comptime FuncType: type) []const u8 {
 
     // Start with calling convention if not default
     comptime var signature: []const u8 = "";
-    if (fn_info.calling_convention != .Unspecified) {
+    if (fn_info.calling_convention != .auto) {
         signature = signature ++ @tagName(fn_info.calling_convention) ++ " ";
     }
 
@@ -162,8 +162,7 @@ pub fn validate(comptime Impl: type, comptime Inter: type) void {
             const inter_child = @field(inter_info, active_tag_name).child;
             validate(impl_child, inter_child);
             return;
-        }
-        if (@hasField(@TypeOf(active_tag_data), "payload")) {
+        } else if (@hasField(@TypeOf(active_tag_data), "payload")) {
             const impl_child = active_tag_data.payload;
             const inter_child = @field(inter_info, active_tag_name).payload;
             validate(impl_child, inter_child);
