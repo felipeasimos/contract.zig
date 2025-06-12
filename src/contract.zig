@@ -1,6 +1,6 @@
 const std = @import("std");
 
-fn getFunctionSignatureString(comptime FuncType: type) []const u8 {
+fn getFunctionSignatureString(comptime FuncType: type, comptime fn_name: []const u8) []const u8 {
     const func_info = @typeInfo(FuncType);
 
     if (func_info != .@"fn") {
@@ -15,7 +15,7 @@ fn getFunctionSignatureString(comptime FuncType: type) []const u8 {
         signature = signature ++ @tagName(fn_info.calling_convention) ++ " ";
     }
 
-    signature = signature ++ "fn(";
+    signature = signature ++ "fn " ++ fn_name ++ "(";
 
     // Add parameters with more detail
     inline for (fn_info.params, 0..) |param, i| {
@@ -89,19 +89,30 @@ fn selfChildTypeMatch(comptime ParamAType: type, comptime A: type, comptime Para
 }
 
 fn validateFunction(comptime Impl: type, comptime Inter: type, comptime fn_name: []const u8) void {
-    const inter_fn_info = @typeInfo(@TypeOf(@field(Inter, fn_name))).@"fn";
-    const impl_fn_info = @typeInfo(@TypeOf(@field(Impl, fn_name))).@"fn";
+    const inter_fn_type = @TypeOf(@field(Inter, fn_name));
+    const inter_fn_info = @typeInfo(inter_fn_type).@"fn";
+    const impl_fn_type = @TypeOf(@field(Impl, fn_name));
+    const impl_fn_info = @typeInfo(impl_fn_type).@"fn";
 
     if (impl_fn_info.return_type != inter_fn_info.return_type) {
         if (impl_fn_info.return_type == null or inter_fn_info.return_type == null) {
-            @compileError("Return types don't match");
+            @compileError(std.fmt.comptimePrint("Return types don't match in implementation {s} and interface {s}", .{
+                getFunctionSignatureString(impl_fn_type, fn_name),
+                getFunctionSignatureString(inter_fn_type, fn_name),
+            }));
         }
         if (!selfChildTypeMatch(impl_fn_info.return_type.?, Impl, inter_fn_info.return_type.?, Inter)) {
-            @compileError("Return types don't match");
+            @compileError(std.fmt.comptimePrint("Return types don't match in implementation {s} and interface {s}", .{
+                getFunctionSignatureString(impl_fn_type, fn_name),
+                getFunctionSignatureString(inter_fn_type, fn_name),
+            }));
         }
     }
     if (impl_fn_info.is_var_args != inter_fn_info.is_var_args) {
-        @compileError("Function signature doesn't match");
+        @compileError(std.fmt.comptimePrint("Function signature doesn't match in implementation {s} and interface {s}", .{
+            getFunctionSignatureString(impl_fn_type, fn_name),
+            getFunctionSignatureString(inter_fn_type, fn_name),
+        }));
     }
 
     for (inter_fn_info.params, 0..) |param, i| {
@@ -109,7 +120,10 @@ fn validateFunction(comptime Impl: type, comptime Inter: type, comptime fn_name:
         const type_match = impl_param.type == param.type;
         const self_match = impl_param.is_generic or param.is_generic or impl_param.type == param.type or selfChildTypeMatch(impl_param.type.?, Impl, param.type.?, Inter);
         if (!type_match and !self_match) {
-            @compileError("Function signature doesn't match");
+            @compileError(std.fmt.comptimePrint("Function signatures from implementation ({s}) and interface ({s}) don't match", .{
+                getFunctionSignatureString(impl_fn_type, fn_name),
+                getFunctionSignatureString(inter_fn_type, fn_name),
+            }));
         }
     }
 }
@@ -132,7 +146,7 @@ fn validateDeclarations(comptime Impl: type, comptime Inter: type) void {
                 continue;
             }
             if (!@hasDecl(Impl, fn_name)) {
-                const error_message = std.fmt.comptimePrint("Missing implementation of {s}", .{getFunctionSignatureString(inter_fn_type)});
+                const error_message = std.fmt.comptimePrint("Missing implementation of {s} (it is private or nonexistant)", .{getFunctionSignatureString(inter_fn_type, fn_name)});
                 @compileError(error_message);
             }
             validateFunction(Impl, Inter, fn_name);
